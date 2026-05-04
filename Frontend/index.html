@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GC Visualizer — Garbage Collection Algorithms</title>
+  
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="navbar">
+  <div class="nav-logo">GC<span class="accent">.</span>viz</div>
+  <div class="nav-links">
+    <a href="index.html" class="active">Home</a>
+    <a href="about.html">About</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg">
+    <div class="grid-overlay"></div>
+    <div class="blob blob1"></div>
+    <div class="blob blob2"></div>
+    <div class="blob blob3"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">Operating Systems — Memory Management</div>
+    <h1 class="hero-title">Garbage<br><span class="outline-text">Collection</span><br>Visualized</h1>
+    <p class="hero-sub">Interactive demonstrations of how programming languages automatically reclaim memory — reference counting, mark-and-sweep, and generational collection.</p>
+    <div class="hero-cta">
+      <button class="btn-primary" onclick="scrollToViz()">Explore Algorithms ↓</button>
+      <a href="about.html" class="btn-ghost">Learn More</a>
+    </div>
+  </div>
+  <div class="hero-stats">
+    <div class="stat"><span class="stat-num">3</span><span class="stat-label">Algorithms</span></div>
+    <div class="stat-divider"></div>
+    <div class="stat"><span class="stat-num">∞</span><span class="stat-label">Memory Safety</span></div>
+    <div class="stat-divider"></div>
+    <div class="stat"><span class="stat-num">0</span><span class="stat-label">Manual frees</span></div>
+  </div>
+</section>
+
+<!-- ALGORITHM SELECTOR -->
+<section class="algo-selector" id="viz-section">
+  <div class="container">
+    <div class="section-label">Choose Algorithm</div>
+    <div class="algo-tabs">
+      <button class="algo-tab active" data-algo="refcount" onclick="selectAlgo('refcount')">
+        <span class="tab-num">01</span>
+        <span class="tab-name">Reference Counting</span>
+      </button>
+      <button class="algo-tab" data-algo="marksweep" onclick="selectAlgo('marksweep')">
+        <span class="tab-num">02</span>
+        <span class="tab-name">Mark & Sweep</span>
+      </button>
+      <button class="algo-tab" data-algo="generational" onclick="selectAlgo('generational')">
+        <span class="tab-num">03</span>
+        <span class="tab-name">Generational GC</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- MAIN VISUALIZER -->
+<section class="visualizer-section">
+  <div class="container wide">
+    <div class="viz-layout">
+
+      <!-- LEFT: Controls + Info -->
+      <div class="viz-sidebar">
+        <div class="algo-info" id="algo-info">
+          <div class="algo-tag" id="algo-tag">REFERENCE COUNTING</div>
+          <h2 class="algo-title" id="algo-title">Track Every Reference</h2>
+          <p class="algo-desc" id="algo-desc">Each object maintains a count of how many references point to it. When the count drops to zero, the memory is immediately reclaimed — no pauses, no waiting.</p>
+          <div class="algo-props">
+            <div class="prop"><span class="prop-label">Pause Time</span><span class="prop-val good" id="prop-pause">Incremental</span></div>
+            <div class="prop"><span class="prop-label">Overhead</span><span class="prop-val mid" id="prop-overhead">Per-write</span></div>
+            <div class="prop"><span class="prop-label">Cycles</span><span class="prop-val bad" id="prop-cycles">Cannot detect</span></div>
+            <div class="prop"><span class="prop-label">Used in</span><span class="prop-val" id="prop-used">CPython, Swift, Rust (Rc)</span></div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button class="ctrl-btn primary" id="btn-add" onclick="addObject()">＋ Allocate Object</button>
+
+          <div class="ref-builder">
+            <div class="ref-builder-label">Custom Reference</div>
+            <div class="ref-row">
+              <select id="ref-from" class="ref-select"><option value="">From…</option></select>
+              <span class="ref-arrow-icon">→</span>
+              <select id="ref-to" class="ref-select"><option value="">To…</option></select>
+            </div>
+            <div class="ref-row">
+              <button class="ctrl-btn small primary" onclick="addCustomRef()">＋ Add</button>
+              <button class="ctrl-btn small danger" onclick="removeCustomRef()">✕ Remove</button>
+            </div>
+          </div>
+
+          <div class="speed-row">
+            <span class="speed-label">⏱ Speed</span>
+            <input type="range" id="speed-slider" min="1" max="5" value="2" class="speed-slider" oninput="updateSpeed(this.value)">
+            <span class="speed-val" id="speed-val">Slow</span>
+          </div>
+
+          <button class="ctrl-btn danger" id="btn-gc" onclick="runGC()">▶ Run GC</button>
+          <button class="ctrl-btn ghost" onclick="resetViz()">↺ Reset</button>
+        </div>
+
+        <!-- STEP EXPLAINER -->
+        <div class="step-panel" id="step-panel">
+          <div class="step-header">
+            <span class="step-tag" id="step-tag">IDLE</span>
+          </div>
+          <div class="step-title" id="step-title">Ready to begin</div>
+          <div class="step-desc" id="step-desc">Allocate objects, build your reference graph, then click Run GC to watch the algorithm execute step-by-step with explanations.</div>
+          <div class="step-progress-wrap" id="step-progress-wrap" style="display:none">
+            <div class="step-bar"><div class="step-fill" id="step-fill"></div></div>
+            <span class="step-count" id="step-count">0 / 0</span>
+          </div>
+        </div>
+
+        <div class="log-panel">
+          <div class="log-header">Console Log</div>
+          <div class="log-body" id="log-body">
+            <div class="log-line info">▸ Visualizer ready. Allocate some objects to begin.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Canvas -->
+      <div class="viz-main">
+        <div class="canvas-wrapper">
+          <canvas id="gc-canvas"></canvas>
+          <div class="canvas-overlay" id="canvas-overlay">
+            <div class="overlay-hint">Click "Allocate Object" to add memory objects</div>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="legend-item"><span class="dot green"></span>Reachable / Active</div>
+          <div class="legend-item"><span class="dot yellow"></span>Marked (scanning)</div>
+          <div class="legend-item"><span class="dot red"></span>Unreachable / Collectable</div>
+          <div class="legend-item"><span class="dot gray"></span>Freed / Collected</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ALGO OVERVIEW CARDS -->
+<section class="overview-section">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-label">How They Work</div>
+      <h2 class="section-title">Three Approaches<br>to Memory Freedom</h2>
+    </div>
+    <div class="cards-grid">
+      <div class="algo-card card-ref">
+        <div class="card-number">01</div>
+        <div class="card-icon">🔢</div>
+        <h3>Reference Counting</h3>
+        <p>Objects carry a counter that increments/decrements as references are created or destroyed. Zero means dead.</p>
+        <div class="card-pros-cons">
+          <div class="pros">
+            <div class="pc-label">Pros</div>
+            <div class="pc-item">✓ Immediate reclamation</div>
+            <div class="pc-item">✓ No GC pauses</div>
+            <div class="pc-item">✓ Predictable</div>
+          </div>
+          <div class="cons">
+            <div class="pc-label">Cons</div>
+            <div class="pc-item">✗ Cyclic references leak</div>
+            <div class="pc-item">✗ Counter overhead</div>
+          </div>
+        </div>
+        <a href="about.html#refcount" class="card-link">Deep dive →</a>
+      </div>
+
+      <div class="algo-card card-mark featured">
+        <div class="card-badge">Most Common</div>
+        <div class="card-number">02</div>
+        <div class="card-icon">🔍</div>
+        <h3>Mark & Sweep</h3>
+        <p>Two-phase: trace all reachable objects from GC roots (mark), then sweep memory to free the unmarked ones.</p>
+        <div class="card-pros-cons">
+          <div class="pros">
+            <div class="pc-label">Pros</div>
+            <div class="pc-item">✓ Handles cycles</div>
+            <div class="pc-item">✓ No per-write cost</div>
+            <div class="pc-item">✓ Complete collection</div>
+          </div>
+          <div class="cons">
+            <div class="pc-label">Cons</div>
+            <div class="pc-item">✗ Stop-the-world pauses</div>
+            <div class="pc-item">✗ Fragmentation</div>
+          </div>
+        </div>
+        <a href="about.html#marksweep" class="card-link">Deep dive →</a>
+      </div>
+
+      <div class="algo-card card-gen">
+        <div class="card-number">03</div>
+        <div class="card-icon">🧬</div>
+        <h3>Generational GC</h3>
+        <p>Exploits the "generational hypothesis" — most objects die young. Separates heap into generations for efficient collection.</p>
+        <div class="card-pros-cons">
+          <div class="pros">
+            <div class="pc-label">Pros</div>
+            <div class="pc-item">✓ Very fast in practice</div>
+            <div class="pc-item">✓ Short minor GC pauses</div>
+            <div class="pc-item">✓ High throughput</div>
+          </div>
+          <div class="cons">
+            <div class="pc-label">Cons</div>
+            <div class="pc-item">✗ Complex to implement</div>
+            <div class="pc-item">✗ Major GC still pauses</div>
+          </div>
+        </div>
+        <a href="about.html#generational" class="card-link">Deep dive →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPARISON TABLE -->
+<section class="compare-section">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-label">Quick Compare</div>
+      <h2 class="section-title">Side by Side</h2>
+    </div>
+    <div class="table-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Property</th>
+            <th>Reference Counting</th>
+            <th>Mark & Sweep</th>
+            <th>Generational</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Pause Type</td><td class="good">Incremental</td><td class="bad">Stop-the-World</td><td class="mid">Minor pauses</td></tr>
+          <tr><td>Cycle Detection</td><td class="bad">No</td><td class="good">Yes</td><td class="good">Yes</td></tr>
+          <tr><td>Immediate Free</td><td class="good">Yes</td><td class="bad">No</td><td class="bad">No</td></tr>
+          <tr><td>Memory Overhead</td><td class="mid">Counter per obj</td><td class="mid">Mark bit per obj</td><td class="good">Low (young gen)</td></tr>
+          <tr><td>Fragmentation</td><td class="mid">Possible</td><td class="bad">Yes</td><td class="good">Compacted</td></tr>
+          <tr><td>Examples</td><td>CPython, Swift</td><td>Go, early JVM</td><td>JVM, V8, .NET</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-content">
+      <div class="footer-brand">
+        <div class="nav-logo">GC<span class="accent">.</span>viz</div>
+        <p>An interactive learning tool for garbage collection algorithms. Built for OS course project.</p>
+      </div>
+      <div class="footer-links">
+        <a href="index.html">Home</a>
+        <a href="about.html">About</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>Garbage Collection Visualizer — Operating Systems Project</span>
+    </div>
+  </div>
+</footer>
+
+<script src="visualizer.js"></script>
+</body>
+</html>

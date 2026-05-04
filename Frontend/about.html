@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>About — GC Visualizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="about.css">
+</head>
+<body class="about-page">
+
+<!-- NAV -->
+<nav class="navbar">
+  <div class="nav-logo">GC<span class="accent">.</span>viz</div>
+  <div class="nav-links">
+    <a href="index.html">Home</a>
+    <a href="about.html" class="active">About</a>
+  </div>
+</nav>
+
+<!-- ABOUT HERO -->
+<section class="about-hero">
+  <div class="about-hero-bg">
+    <div class="blob blob1"></div>
+    <div class="blob blob2"></div>
+  </div>
+  <div class="container">
+    <div class="about-hero-inner">
+      <div class="hero-badge">Complete Reference Guide</div>
+      <h1>Everything About<br><span class="outline-text">Garbage Collection</span></h1>
+      <p>A deep-dive into how modern runtimes automatically manage memory — the algorithms, trade-offs, and real-world implementations that power today's software.</p>
+      <div class="about-nav-pills">
+        <a href="#memory-basics" class="pill">Memory Basics</a>
+        <a href="#refcount" class="pill">Reference Counting</a>
+        <a href="#marksweep" class="pill">Mark & Sweep</a>
+        <a href="#generational" class="pill">Generational GC</a>
+        <a href="#tradeoffs" class="pill">Trade-offs</a>
+        <a href="#real-world" class="pill">Real World</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MEMORY BASICS -->
+<section class="content-section" id="memory-basics">
+  <div class="container">
+    <div class="content-block">
+      <div class="block-label">01 — Foundation</div>
+      <h2 class="block-title">Memory Management:<br>The Core Problem</h2>
+      <div class="two-col">
+        <div>
+          <p>Every program needs memory to store data. In languages like C and C++, the programmer manually allocates memory using <code>malloc()</code> or <code>new</code>, and must free it using <code>free()</code> or <code>delete</code>. This model is powerful but dangerous — forget to free memory and you have a <strong>memory leak</strong>; free it too early and you have a <strong>dangling pointer</strong>; free it twice and you have undefined behavior.</p>
+          <p>Garbage collection (GC) is the automated solution. A runtime system tracks which objects are still in use and automatically reclaims those that aren't. The programmer is freed from manual memory management, but at the cost of some runtime overhead.</p>
+        </div>
+        <div>
+          <div class="info-box">
+            <div class="info-box-title">🧠 Key Concepts</div>
+            <div class="concept-list">
+              <div class="concept"><strong>Heap</strong> — Dynamic memory region where objects live</div>
+              <div class="concept"><strong>Stack</strong> — Function-local variables, auto-managed</div>
+              <div class="concept"><strong>GC Root</strong> — Starting point for reachability analysis (stack vars, globals)</div>
+              <div class="concept"><strong>Reachability</strong> — An object is alive if it can be reached from a GC root via references</div>
+              <div class="concept"><strong>Liveness</strong> — Only reachable objects are considered "live" and retained</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="memory-diagram">
+        <div class="mem-title">Memory Layout Overview</div>
+        <div class="mem-visual">
+          <div class="mem-region stack-region">
+            <div class="mem-label">Stack</div>
+            <div class="mem-items">
+              <div class="mem-item">main() frame</div>
+              <div class="mem-item">foo() frame</div>
+              <div class="mem-item gc-root-tag">GC Root ↓</div>
+            </div>
+          </div>
+          <div class="mem-arrow">→</div>
+          <div class="mem-region heap-region">
+            <div class="mem-label">Heap</div>
+            <div class="heap-objects">
+              <div class="heap-obj reachable" title="Reachable from root">Obj A<br><small>refs: 2</small></div>
+              <div class="heap-obj reachable" title="Reachable">Obj B<br><small>refs: 1</small></div>
+              <div class="heap-obj unreachable" title="Unreachable — will be GC'd">Obj C<br><small>refs: 0</small></div>
+              <div class="heap-obj reachable" title="Reachable">Obj D<br><small>refs: 3</small></div>
+              <div class="heap-obj unreachable" title="Cyclic, unreachable">Obj E<br><small>cycle</small></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- REFERENCE COUNTING -->
+<section class="content-section alt-bg" id="refcount">
+  <div class="container">
+    <div class="content-block">
+      <div class="block-label">02 — Algorithm One</div>
+      <h2 class="block-title">Reference Counting</h2>
+      <div class="algo-badge-row">
+        <span class="badge green">Incremental</span>
+        <span class="badge orange">No Cycle Detection</span>
+        <span class="badge blue">Immediate Reclamation</span>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <h3>How It Works</h3>
+          <p>Reference counting is the simplest GC strategy. Every object on the heap stores an integer — its <strong>reference count</strong> — representing how many pointers currently point to it.</p>
+          <ul class="styled-list">
+            <li>When a new reference to an object is created, its count is <strong>incremented</strong></li>
+            <li>When a reference is destroyed (goes out of scope, is reassigned), the count is <strong>decremented</strong></li>
+            <li>When the count reaches <strong>zero</strong>, no references exist and the object is immediately freed</li>
+            <li>Freeing an object may decrement counts of objects it references, potentially cascading</li>
+          </ul>
+        </div>
+        <div>
+          <div class="code-block">
+            <div class="code-header">Pseudocode — Reference Counting</div>
+<pre>
+function new_reference(obj):
+    obj.ref_count += 1
+
+function delete_reference(obj):
+    obj.ref_count -= 1
+    if obj.ref_count == 0:
+        for ref in obj.references:
+            delete_reference(ref)
+        free(obj)  // immediate!
+
+// Example:
+a = allocate()   // a.ref_count = 1
+b = a            // a.ref_count = 2
+del b            // a.ref_count = 1
+del a            // a.ref_count = 0 → freed!
+</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="problem-box">
+        <div class="problem-title">⚠️ The Cycle Problem</div>
+        <div class="two-col">
+          <div>
+            <p>Reference counting's fatal flaw: <strong>cyclic references</strong>. If Object A references B and B references A, both have a ref count of 1 even when no external pointers exist. Neither will ever be freed — this is a <strong>memory leak</strong>.</p>
+            <p>Solutions include: a separate cycle detector (CPython's approach), weak references for back-pointers (Swift, Rust), or combining with mark-and-sweep for cycle collection.</p>
+          </div>
+          <div class="cycle-visual">
+            <div class="cycle-diagram">
+              <div class="cy-obj">A<br><small>rc=1</small></div>
+              <div class="cy-arrows">
+                <div class="cy-arrow right">→</div>
+                <div class="cy-arrow left">←</div>
+              </div>
+              <div class="cy-obj">B<br><small>rc=1</small></div>
+            </div>
+            <div class="cycle-note">Neither A nor B will be freed despite being unreachable!</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="usage-row">
+        <div class="usage-title">Real-world Usage</div>
+        <div class="usage-pills">
+          <span class="usage-pill">CPython (with cycle detector)</span>
+          <span class="usage-pill">Swift ARC</span>
+          <span class="usage-pill">Rust Rc&lt;T&gt; / Arc&lt;T&gt;</span>
+          <span class="usage-pill">Objective-C (pre-ARC manual, ARC automated)</span>
+          <span class="usage-pill">COM (Windows)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MARK AND SWEEP -->
+<section class="content-section" id="marksweep">
+  <div class="container">
+    <div class="content-block">
+      <div class="block-label">03 — Algorithm Two</div>
+      <h2 class="block-title">Mark & Sweep</h2>
+      <div class="algo-badge-row">
+        <span class="badge red">Stop-the-World</span>
+        <span class="badge green">Handles Cycles</span>
+        <span class="badge blue">Complete Collection</span>
+      </div>
+
+      <p class="lead">Mark & Sweep is the foundational GC algorithm that most modern collectors build upon. It operates in two clearly distinct phases and correctly handles all reachability scenarios — including cyclic references.</p>
+
+      <div class="phases-grid">
+        <div class="phase-card phase-mark">
+          <div class="phase-num">Phase 1</div>
+          <div class="phase-name">🔍 Mark</div>
+          <p>Starting from every <strong>GC root</strong> (stack variables, global variables, registers), the collector traverses the entire object graph using depth-first or breadth-first search. Every reachable object gets its <strong>mark bit set</strong>.</p>
+          <div class="phase-detail">This is essentially graph traversal — the GC treats the heap as a directed graph where edges are references.</div>
+        </div>
+        <div class="phase-card phase-sweep">
+          <div class="phase-num">Phase 2</div>
+          <div class="phase-name">🧹 Sweep</div>
+          <p>The collector linearly scans <em>every</em> object in the heap. Objects with their mark bit <strong>set</strong> (reachable) have their bit cleared for next cycle. Objects with bit <strong>clear</strong> (unreachable) are freed.</p>
+          <div class="phase-detail">Sweep time is proportional to heap size, not live object count — it must inspect everything.</div>
+        </div>
+      </div>
+
+      <div class="two-col mt-4">
+        <div>
+          <div class="code-block">
+            <div class="code-header">Pseudocode — Mark & Sweep</div>
+<pre>
+function mark_and_sweep():
+    // PHASE 1: Mark
+    worklist = get_all_roots()
+    while worklist not empty:
+        obj = worklist.pop()
+        if not obj.marked:
+            obj.marked = true
+            for ref in obj.references:
+                worklist.push(ref)
+
+    // PHASE 2: Sweep
+    for obj in all_heap_objects:
+        if obj.marked:
+            obj.marked = false  // reset for next GC
+        else:
+            free(obj)
+</pre>
+          </div>
+        </div>
+        <div>
+          <div class="info-box">
+            <div class="info-box-title">⚡ Variants & Optimizations</div>
+            <div class="concept-list">
+              <div class="concept"><strong>Tri-color marking</strong> — White (unvisited), Gray (in progress), Black (done) — enables incremental GC</div>
+              <div class="concept"><strong>Mark-Compact</strong> — After sweeping, compact live objects to eliminate fragmentation</div>
+              <div class="concept"><strong>Mark-Copy</strong> — Copy live objects to a new region instead of freeing in-place</div>
+              <div class="concept"><strong>Incremental marking</strong> — Spread mark phase across multiple small pauses</div>
+              <div class="concept"><strong>Concurrent GC</strong> — Run GC threads alongside application threads (requires write barriers)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="usage-row">
+        <div class="usage-title">Real-world Usage</div>
+        <div class="usage-pills">
+          <span class="usage-pill">Go (tricolor concurrent)</span>
+          <span class="usage-pill">Early JVM</span>
+          <span class="usage-pill">JavaScript engines (V8 major GC)</span>
+          <span class="usage-pill">Lua</span>
+          <span class="usage-pill">Ruby (CRuby)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GENERATIONAL GC -->
+<section class="content-section alt-bg" id="generational">
+  <div class="container">
+    <div class="content-block">
+      <div class="block-label">04 — Algorithm Three</div>
+      <h2 class="block-title">Generational GC</h2>
+      <div class="algo-badge-row">
+        <span class="badge green">High Throughput</span>
+        <span class="badge green">Short Minor Pauses</span>
+        <span class="badge orange">Complex Implementation</span>
+      </div>
+
+      <div class="hypothesis-box">
+        <div class="hyp-icon">💡</div>
+        <div>
+          <div class="hyp-title">The Generational Hypothesis</div>
+          <p><em>"Most objects die young."</em> Empirical studies show that the vast majority of objects allocated in typical programs become unreachable very quickly — often within milliseconds. A small percentage (long-lived caches, singletons, etc.) survive for the entire program duration.</p>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <h3>How It Works</h3>
+          <p>Generational GC divides the heap into <strong>generations</strong> based on object age. New objects are allocated in the <strong>young generation</strong> (also called nursery). Objects that survive multiple GC cycles are <strong>promoted</strong> to older generations.</p>
+          <p>Because most objects die young, collecting only the young generation (<strong>minor GC</strong>) is fast and efficient — you process a small region and collect a lot of garbage. The old generation is collected less frequently (<strong>major GC</strong>).</p>
+          <ul class="styled-list">
+            <li><strong>Young Gen:</strong> Small, collected frequently (milliseconds)</li>
+            <li><strong>Old Gen:</strong> Large, collected rarely (seconds)</li>
+            <li><strong>Promotion:</strong> Objects surviving N minor GCs move to old gen</li>
+            <li><strong>Write Barriers:</strong> Track old→young references for minor GC correctness</li>
+          </ul>
+        </div>
+        <div>
+          <div class="gen-diagram">
+            <div class="gen-visual">
+              <div class="gen-region young-gen">
+                <div class="gen-label">Young Generation</div>
+                <div class="gen-sub">Eden Space</div>
+                <div class="gen-objs">
+                  <div class="gen-obj new-obj">New</div>
+                  <div class="gen-obj new-obj">New</div>
+                  <div class="gen-obj dying-obj">💀</div>
+                  <div class="gen-obj new-obj">New</div>
+                  <div class="gen-obj dying-obj">💀</div>
+                </div>
+                <div class="gen-sub">Survivor Spaces (S0, S1)</div>
+                <div class="gen-objs">
+                  <div class="gen-obj survivor-obj">S1</div>
+                  <div class="gen-obj survivor-obj">S2</div>
+                </div>
+                <div class="promo-arrow">Promote after N cycles ↓</div>
+              </div>
+              <div class="gen-region old-gen">
+                <div class="gen-label">Old Generation (Tenured)</div>
+                <div class="gen-objs">
+                  <div class="gen-obj old-obj">Long-lived obj</div>
+                  <div class="gen-obj old-obj">Cache</div>
+                  <div class="gen-obj old-obj">Singleton</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col mt-4">
+        <div>
+          <div class="info-box">
+            <div class="info-box-title">🔗 Write Barriers — The Secret Sauce</div>
+            <p>Minor GC must find all references from old objects into the young generation (cross-generational references). Without tracking these, live young objects referenced only by old objects would be incorrectly freed.</p>
+            <p>Write barriers intercept every pointer store. When an old object writes a reference to a young object, that old object is recorded in a <strong>remembered set</strong> or <strong>card table</strong>. Minor GC treats these as additional roots.</p>
+          </div>
+        </div>
+        <div>
+          <div class="code-block">
+            <div class="code-header">JVM Generations (simplified)</div>
+<pre>
+Young Generation:
+  Eden → S0 → S1 → Old Gen
+  (objects bounce between survivor spaces)
+
+Minor GC trigger: Eden is full
+  → collect Eden + one survivor space
+  → copy survivors to other survivor space
+  → promote objects aged > threshold
+
+Major GC trigger: Old Gen is full
+  → full heap collection (expensive)
+  → compaction to reduce fragmentation
+</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="usage-row">
+        <div class="usage-title">Real-world Usage</div>
+        <div class="usage-pills">
+          <span class="usage-pill">JVM (G1GC, ZGC, Shenandoah)</span>
+          <span class="usage-pill">V8 / Node.js</span>
+          <span class="usage-pill">.NET CLR</span>
+          <span class="usage-pill">Dart</span>
+          <span class="usage-pill">SpiderMonkey (Firefox)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRADE-OFFS -->
+<section class="content-section" id="tradeoffs">
+  <div class="container">
+    <div class="content-block">
+      <div class="block-label">05 — Analysis</div>
+      <h2 class="block-title">Trade-offs &<br>Performance</h2>
+
+      <div class="tradeoff-grid">
+        <div class="tradeoff-card">
+          <div class="to-icon">⏱️</div>
+          <h3>Latency vs Throughput</h3>
+          <p>Reference counting has low latency (no pauses) but lower throughput (constant overhead per pointer write). Mark & Sweep has high throughput but can cause large pauses. Generational GC optimizes both with short minor pauses and infrequent major pauses.</p>
+        </div>
+        <div class="tradeoff-card">
+          <div class="to-icon">💾</div>
+          <h3>Memory Overhead</h3>
+          <p>GC systems typically need 2–5× more memory than live data to work efficiently (to avoid frequent collections). Reference counting adds one integer per object. Generational GC needs extra memory for survivor spaces and remembered sets.</p>
+        </div>
+        <div class="tradeoff-card">
+          <div class="to-icon">🔄</div>
+          <h3>Fragmentation</h3>
+          <p>Mark & Sweep can fragment memory as objects are freed in-place. Mark-Compact and generational collectors using copying avoid fragmentation by relocating live objects, but require updating all references — a significant challenge.</p>
+        </div>
+        <div class="tradeoff-card">
+          <div class="to-icon">🧵</div>
+          <h3>Concurrency</h3>
+          <p>Modern GCs aim to run concurrently with the application. This requires <strong>write barriers</strong> (intercept pointer stores) and <strong>read barriers</strong> to ensure the GC's view of the heap stays consistent. Go's GC and JVM's ZGC are examples of highly concurrent collectors.</p>
+        </div>
+      </div>
+
+      <div class="perf-table-wrap">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Algorithm</th>
+              <th>Latency</th>
+              <th>Throughput</th>
+              <th>Memory</th>
+              <th>Cycles</th>
+              <th>Fragmentation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Reference Counting</strong></td>
+              <td class="good">Very Low</td>
+              <td class="mid">Medium</td>
+              <td class="mid">+1 int/obj</td>
+              <td class="bad">Leaks</td>
+              <td class="mid">Possible</td>
+            </tr>
+            <tr>
+              <td><strong>Mark & Sweep</strong></td>
+              <td class="bad">High (STW)</td>
+              <td class="good">High</td>
+              <td class="mid">Mark bit</td>
+              <td class="good">Handled</td>
+              <td class="bad">Yes</td>
+            </tr>
+            <tr>
+              <td><strong>Mark-Compact</strong></td>
+              <td class="bad">Very High</td>
+              <td class="mid">Medium</td>
+              <td class="good">Low</td>
+              <td class="good">Handled</td>
+              <td class="good">None</td>
+            </tr>
+            <tr>
+              <td><strong>Generational</strong></td>
+              <td class="good">Low (minor)</td>
+              <td class="good">Very High</td>
+              <td class="mid">2× live</td>
+              <td class="good">Handled</td>
+              <td class="good">Compacted</td>
+            </tr>
+            <tr>
+              <td><strong>Concurrent GC</strong></td>
+              <td class="good">Very Low</td>
+              <td class="good">High</td>
+              <td class="bad">High overhead</td>
+              <td class="good">Handled</td>
+              <td class="good">Varies</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- REAL WORLD -->
+<section class="content-section alt-bg" id="real-world">
+  <div class="container">
+    <div class="content-block">
+      <div class="block-label">06 — Real World</div>
+      <h2 class="block-title">Production GC Systems</h2>
+      <div class="runtime-grid">
+        <div class="runtime-card">
+          <div class="runtime-icon">☕</div>
+          <div class="runtime-name">JVM (Java/Kotlin/Scala)</div>
+          <div class="runtime-gc">G1GC, ZGC, Shenandoah</div>
+          <p>The JVM offers multiple GC options. G1GC (Garbage First) divides heap into equal-sized regions and prioritizes collecting regions with most garbage. ZGC targets sub-millisecond pauses even on terabyte heaps using colored pointers and load barriers.</p>
+        </div>
+        <div class="runtime-card">
+          <div class="runtime-icon">🦎</div>
+          <div class="runtime-name">V8 (JavaScript)</div>
+          <div class="runtime-gc">Orinoco — Generational + Concurrent</div>
+          <p>V8's Orinoco GC uses a generational approach. Minor GC (Scavenge) uses a copying collector on the young generation. Major GC uses incremental marking and concurrent sweeping to minimize pause times in the browser and Node.js.</p>
+        </div>
+        <div class="runtime-card">
+          <div class="runtime-icon">🐍</div>
+          <div class="runtime-name">CPython</div>
+          <div class="runtime-gc">Reference Counting + Cycle Detector</div>
+          <p>Python primarily uses reference counting for immediate deallocation. A supplemental cycle-detecting GC runs periodically to collect cyclic garbage that reference counting cannot handle. Objects are sorted into 3 generations for the cycle detector.</p>
+        </div>
+        <div class="runtime-card">
+          <div class="runtime-icon">🦫</div>
+          <div class="runtime-name">Go</div>
+          <div class="runtime-gc">Tricolor Concurrent Mark & Sweep</div>
+          <p>Go uses a concurrent, tricolor mark-and-sweep collector. It aims for sub-millisecond stop-the-world pauses by doing most work concurrently with the application. Write barriers maintain invariants during concurrent marking.</p>
+        </div>
+        <div class="runtime-card">
+          <div class="runtime-icon">🔷</div>
+          <div class="runtime-name">.NET CLR</div>
+          <div class="runtime-gc">Generational + Server/Workstation modes</div>
+          <p>.NET uses a generational GC with two modes: Workstation GC (low latency, single-threaded) and Server GC (high throughput, multi-threaded with per-core heaps). Background GC allows major collections to run concurrently.</p>
+        </div>
+        <div class="runtime-card">
+          <div class="runtime-icon">🦅</div>
+          <div class="runtime-name">Swift / Obj-C</div>
+          <div class="runtime-gc">Automatic Reference Counting (ARC)</div>
+          <p>Swift uses ARC, which is compile-time reference counting — the compiler inserts retain/release calls automatically. Unlike runtime GC, this has zero pause times. Weak and unowned references handle cycles. ARC is deterministic and cache-friendly.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="container">
+    <div class="cta-inner">
+      <h2>See It In Action</h2>
+      <p>Head to the interactive visualizer and watch these algorithms work in real-time</p>
+      <a href="index.html#viz-section" class="btn-primary">Open Visualizer →</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-content">
+      <div class="footer-brand">
+        <div class="nav-logo">GC<span class="accent">.</span>viz</div>
+        <p>An interactive learning tool for garbage collection algorithms. Built for OS course project.</p>
+      </div>
+      <div class="footer-links">
+        <a href="index.html">Home</a>
+        <a href="about.html">About</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>Garbage Collection Visualizer — Operating Systems Project</span>
+    </div>
+  </div>
+</footer>
+
+<script src="about.js"></script>
+</body>
+</html>
